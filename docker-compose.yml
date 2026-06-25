@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  # Message Broker for real-time orchestration streaming
+  kafka:
+    image: apache/kafka:latest
+    container_name: clearvue_kafka_broker
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      KAFKA_LISTENERS: 'PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093'
+      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://localhost:9092'
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@localhost:9093'
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT'
+    networks:
+      - clearvue_network
+
+  # Web API Ingestion Layer Gateway
+  backend_api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: clearvue_api_server
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - shared_excel_payloads:/shared_storage
+    depends_on:
+      - kafka
+    networks:
+      - clearvue_network
+
+  # Asynchronous Background Parser & ETL Worker Daemon
+  etl_worker:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    container_name: clearvue_worker_daemon
+    env_file:
+      - .env
+    volumes:
+      - shared_excel_payloads:/shared_storage
+    depends_on:
+      - kafka
+    networks:
+      - clearvue_network
+
+# Shared resources networking and persistent volumes setups
+networks:
+  clearvue_network:
+    driver: bridge
+
+volumes:
+  shared_excel_payloads:
+    driver: local
